@@ -622,16 +622,16 @@ func main() {
 	}
 	defer dbMgr.db.Close()
 
-	// Static files
 	fs := http.FileServer(http.Dir(WebDir))
 	http.Handle("/", fs)
 
-	// API Endpoints
 	http.HandleFunc("/api/register", apiRegisterHandler)
 	http.HandleFunc("/api/update", apiUpdateHandler)
 	http.HandleFunc("/api/my-team", apiMyTeamHandler)
 	http.HandleFunc("/api/teams", apiAllTeamsHandler)
 
-	fmt.Printf("🚀 CS Cup Server running on https://localhost%s\n", Port)
+	fmt.Printf("🚀 CS Cup Server running on http://localhost%s\n", Port)
 	fmt.Printf("📊 Database: %s\n", DBPath)
+
+	log.Fatal(http.ListenAndServe(Port, nil))
 }
