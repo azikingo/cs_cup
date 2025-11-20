@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
@@ -17,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	_ "modernc.org/sqlite"
 )
 
@@ -612,8 +614,6 @@ func jsonError(w http.ResponseWriter, message string, code int) {
 	})
 }
 
-// --- Main ---
-
 func main() {
 	var err error
 	dbMgr, err = NewDBManager(DBPath)
@@ -622,16 +622,97 @@ func main() {
 	}
 	defer dbMgr.db.Close()
 
+	// Static files & API routes
 	fs := http.FileServer(http.Dir(WebDir))
 	http.Handle("/", fs)
-
 	http.HandleFunc("/api/register", apiRegisterHandler)
 	http.HandleFunc("/api/update", apiUpdateHandler)
 	http.HandleFunc("/api/my-team", apiMyTeamHandler)
 	http.HandleFunc("/api/teams", apiAllTeamsHandler)
 
+	// Start Telegram bot in a goroutine
+	token := os.Getenv("TELEGRAM_BOT_TOKEN")
+	if token == "" {
+		log.Fatal("TELEGRAM_BOT_TOKEN env variable not set")
+	}
+
+	miniAppURL := os.Getenv("MINI_APP_URL")
+	if miniAppURL == "" {
+		log.Fatal("MINI_APP_URL env variable not set")
+	}
+
+	go startTelegramBot(token, miniAppURL)
+
 	fmt.Printf("🚀 CS Cup Server running on http://localhost%s\n", Port)
 	fmt.Printf("📊 Database: %s\n", DBPath)
 
 	log.Fatal(http.ListenAndServe(Port, nil))
+}
+
+func startTelegramBot(token, miniAppURL string) {
+	bot, err := tgbotapi.NewBotAPI(token)
+	if err != nil {
+		log.Fatalf("Failed to create bot: %v", err)
+	}
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	updates := bot.GetUpdatesChan(u)
+
+	log.Println("Telegram bot started...")
+
+	for update := range updates {
+		if update.Message == nil { // ignore non-message updates
+			continue
+		}
+
+		if strings.HasPrefix(update.Message.Text, "/start") {
+			chatID := update.Message.Chat.ID
+
+			// Send WebApp button message manually via Telegram API (bypass lib limitations)
+			if err := sendWebAppButton(token, chatID, miniAppURL); err != nil {
+				log.Printf("Error sending WebApp button: %v", err)
+			}
+		}
+	}
+}
+
+// sendWebAppButton sends a message with inline keyboard containing a WebApp button
+func sendWebAppButton(token string, chatID int64, url string) error {
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
+
+	payload := map[string]interface{}{
+		"chat_id": chatID,
+		"text":    "Добро пожаловать! Нажмите кнопку ниже, чтобы открыть мини-приложение.",
+		"reply_markup": map[string]interface{}{
+			"inline_keyboard": [][]map[string]interface{}{
+				{
+					{
+						"text": "Открыть мини-приложение",
+						"web_app": map[string]string{
+							"url": url,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(body))
+	if err != nil {
+		return fmt.Errorf("http post error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("telegram api returned status %d", resp.StatusCode)
+	}
+
+	return nil
 }
