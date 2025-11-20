@@ -22,7 +22,7 @@ import (
 
 // --- Configuration ---
 const (
-	Port   = ":8443"
+	Port   = ":8080"
 	DBPath = "./cscup.db"
 	WebDir = "."
 )
@@ -634,12 +634,4 @@ func main() {
 
 	fmt.Printf("🚀 CS Cup Server running on https://localhost%s\n", Port)
 	fmt.Printf("📊 Database: %s\n", DBPath)
-
-	// ⬇️ HTTPS server using mkcert files
-	log.Fatal(http.ListenAndServeTLS(
-		Port,
-		"localhost.pem",     // cert file
-		"localhost-key.pem", // key file
-		nil,
-	))
 }
